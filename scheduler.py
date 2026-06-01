@@ -1,5 +1,7 @@
 import random
+import logging
 from datetime import datetime, timedelta
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from database import (
@@ -15,20 +17,26 @@ scheduler = AsyncIOScheduler()
 BOT = None
 
 
-def now():
+# =========================
+# TIME
+# =========================
+
+def now_msk():
     return datetime.utcnow() + timedelta(hours=UTC_OFFSET)
 
 
-def parse_dt(s):
-    return datetime.strptime(s, "%d.%m.%Y %H:%M")
+def parse_dt(dt_str):
+    return datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
 
 
-# ================= TASK CHECK =================
+# =========================
+# TASK CHECKER
+# =========================
 
 async def check_tasks():
 
     tasks = await get_all_active_tasks()
-    current = now()
+    now = now_msk()
 
     for t in tasks:
 
@@ -39,33 +47,47 @@ async def check_tasks():
         except:
             continue
 
-        diff = (dl - current).total_seconds()
+        diff = (dl - now).total_seconds()
 
-        # 24h
+        # 24h reminder
         if 0 < diff <= 86400 and not n24:
-            await BOT.send_message(chat_id, f"⏰ 24ч: {text}")
+            await BOT.send_message(chat_id, f"⏰ 24ч до дедлайна:\n{text}")
             await mark_notification(task_id, "notified_24h")
 
-        # 2h
+        # 2h reminder
         if 0 < diff <= 7200 and not n2:
-            await BOT.send_message(chat_id, f"⚠️ 2ч: {text}")
+            await BOT.send_message(chat_id, f"⚠️ 2ч осталось:\n{text}")
             await mark_notification(task_id, "notified_2h")
 
-        # overdue
-        if current > dl:
+        # overdue spam (каждые 30 минут)
+        if now > dl:
 
-            if not last or (current - datetime.strptime(last, "%Y-%m-%d %H:%M:%S")).seconds >= 1800:
-                await BOT.send_message(chat_id, f"🚨 ПРОСРОЧКА: {text}")
+            if not last:
+                last_time = None
+            else:
+                try:
+                    last_time = datetime.strptime(last, "%Y-%m-%d %H:%M:%S")
+                except:
+                    last_time = None
+
+            if (not last_time) or (now - last_time).seconds >= 1800:
+
+                await BOT.send_message(
+                    chat_id,
+                    f"🚨 ПРОСРОЧКА:\n{text}\n👤 {executor}"
+                )
 
                 await update_last_overdue_notice(
                     task_id,
-                    current.strftime("%Y-%m-%d %H:%M:%S")
+                    now.strftime("%Y-%m-%d %H:%M:%S")
                 )
 
 
-# ================= MORNING =================
+# =========================
+# MORNING MESSAGE
+# =========================
 
-async def morning():
+async def morning_message():
 
     names = ["Даша", "Вася", "Василиса", "Лизочек"]
 
@@ -81,12 +103,18 @@ async def morning():
         )
 
 
+# =========================
+# START SCHEDULER
+# =========================
+
 def setup_scheduler(bot):
 
     global BOT
     BOT = bot
 
     scheduler.add_job(check_tasks, "interval", minutes=1)
-    scheduler.add_job(morning, "cron", hour=10, minute=30, timezone="Europe/Moscow")
+    scheduler.add_job(morning_message, "cron", hour=10, minute=30, timezone="Europe/Moscow")
 
     scheduler.start()
+
+    logging.info("Scheduler started cleanly")
