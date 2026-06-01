@@ -70,7 +70,10 @@ async def check_tasks():
                 except:
                     last_time = None
 
-            if (not last_time) or (now - last_time).seconds >= 1800:
+            # ИСПРАВЛЕНО: total_seconds() вместо seconds
+            # .seconds считает только секунды внутри суток и сбрасывается
+            # каждые 24 часа — из-за этого напоминания о просрочке ломались.
+            if (not last_time) or (now - last_time).total_seconds() >= 1800:
 
                 await BOT.send_message(
                     chat_id,
