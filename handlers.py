@@ -62,16 +62,6 @@ def parse_task(text: str):
 
 
 # =========================
-# REGISTER GROUP
-# =========================
-
-@router.message()
-async def register_group(message: Message):
-    if message.chat.type in ("group", "supergroup"):
-        await save_group(message.chat.id)
-
-
-# =========================
 # CREATE TASK
 # =========================
 
@@ -105,6 +95,10 @@ async def tasks(message: Message):
 
     tasks = await get_all_active_tasks()
 
+    if not tasks:
+        await message.answer("📋 Активных задач нет 🎉")
+        return
+
     text = "📋 Активные задачи:\n\n"
 
     for t in tasks:
@@ -120,7 +114,12 @@ async def tasks(message: Message):
 @router.message(F.text.startswith("/done"))
 async def done(message: Message):
 
-    task_id = int(message.text.split()[1])
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("❌ Формат: /done 5")
+        return
+
+    task_id = int(parts[1])
 
     task = await get_task(task_id, message.chat.id)
 
@@ -140,7 +139,18 @@ async def done(message: Message):
 @router.message(F.text.startswith("/cancel"))
 async def cancel(message: Message):
 
-    task_id = int(message.text.split()[1])
+    parts = message.text.split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer("❌ Формат: /cancel 5")
+        return
+
+    task_id = int(parts[1])
+
+    task = await get_task(task_id, message.chat.id)
+
+    if not task:
+        await message.answer("❌ Не найдено")
+        return
 
     await update_task_status(task_id, "cancelled")
 
@@ -154,9 +164,21 @@ async def cancel(message: Message):
 @router.message(F.text.startswith("/deadline"))
 async def deadline(message: Message):
 
-    _, task_id, new_deadline = message.text.split(maxsplit=2)
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3 or not parts[1].isdigit():
+        await message.answer("❌ Формат: /deadline 5 12.06.2026 18:00")
+        return
 
-    await update_deadline(int(task_id), new_deadline)
+    task_id = int(parts[1])
+    new_deadline = parts[2]
+
+    task = await get_task(task_id, message.chat.id)
+
+    if not task:
+        await message.answer("❌ Не найдено")
+        return
+
+    await update_deadline(task_id, new_deadline)
 
     await message.answer(f"⏰ Дедлайн обновлён #{task_id}")
 
@@ -170,9 +192,27 @@ async def closed(message: Message):
 
     tasks = await get_closed_tasks(message.chat.id)
 
+    if not tasks:
+        await message.answer("📦 Закрытых задач пока нет")
+        return
+
     text = "📦 Закрытые задачи:\n\n"
 
     for t in tasks:
         text += f"#{t[0]} | {t[2]} | {t[3]} | {t[5]}\n"
 
     await message.answer(text)
+
+
+# =========================
+# REGISTER GROUP
+# =========================
+# ВАЖНО: этот хендлер ДОЛЖЕН быть В САМОМ КОНЦЕ файла,
+# потому что @router.message() ловит ВСЕ сообщения.
+# Если поставить его выше — он перехватит все команды,
+# и они перестанут работать.
+
+@router.message()
+async def register_group(message: Message):
+    if message.chat.type in ("group", "supergroup"):
+        await save_group(message.chat.id)
