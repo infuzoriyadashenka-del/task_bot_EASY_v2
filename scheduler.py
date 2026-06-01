@@ -7,23 +7,37 @@ from database import (
 get_all_active_tasks,
 mark_notification,
 update_last_overdue_notice,
-add_penalty
+add_penalty,
+get_groups
 )
 
 UTC_OFFSET = 3
 
 scheduler = AsyncIOScheduler()
-
 BOT = None
+
+# =====================================
+
+# TIME UTILS
+
+# =====================================
 
 def now_msk():
 return datetime.utcnow() + timedelta(hours=UTC_OFFSET)
+
+def parse_deadline(value: str):
+return datetime.strptime(value, "%d.%m.%Y %H:%M")
+
+# =====================================
+
+# CORE CHECKER
+
+# =====================================
 
 async def check_tasks():
 
 ```
 tasks = await get_all_active_tasks()
-
 current_time = now_msk()
 
 for task in tasks:
@@ -39,22 +53,18 @@ for task in tasks:
     last_notice = task[8]
 
     try:
-        deadline_dt = datetime.strptime(
-            deadline,
-            "%d.%m.%Y %H:%M"
-        )
+        deadline_dt = parse_deadline(deadline)
     except:
         continue
 
     delta = deadline_dt - current_time
+    seconds = delta.total_seconds()
 
-    # За 24 часа
+    # =========================
+    # 24 HOURS NOTIFICATION
+    # =========================
 
-    if (
-        delta.total_seconds() <= 86400
-        and delta.total_seconds() > 86340
-        and not notified_24h
-    ):
+    if 0 < seconds <= 86400 and not notified_24h:
 
         await BOT.send_message(
             chat_id,
@@ -65,18 +75,13 @@ for task in tasks:
             f"До дедлайна остались сутки."
         )
 
-        await mark_notification(
-            task_id,
-            "notified_24h"
-        )
+        await mark_notification(task_id, "notified_24h")
 
-    # За 2 часа
+    # =========================
+    # 2 HOURS NOTIFICATION
+    # =========================
 
-    if (
-        delta.total_seconds() <= 7200
-        and delta.total_seconds() > 7140
-        and not notified_2h
-    ):
+    if 0 < seconds <= 7200 and not notified_2h:
 
         await BOT.send_message(
             chat_id,
@@ -87,97 +92,91 @@ for task in tasks:
             f"До дедлайна осталось 2 часа."
         )
 
-        await mark_notification(
-            task_id,
-            "notified_2h"
-        )
+        await mark_notification(task_id, "notified_2h")
 
-    # Просрочка
+    # =========================
+    # OVERDUE LOGIC
+    # =========================
 
     if current_time > deadline_dt:
 
-        send_overdue = False
+        should_send = False
 
         if not last_notice:
-            send_overdue = True
-
+            should_send = True
         else:
-
             try:
-                notice_time = datetime.strptime(
+                last_dt = datetime.strptime(
                     last_notice,
                     "%Y-%m-%d %H:%M:%S"
                 )
 
-                if (
-                    current_time - notice_time
-                ).total_seconds() >= 1800:
-                    send_overdue = True
-
+                if (current_time - last_dt).total_seconds() >= 1800:
+                    should_send = True
             except:
-                send_overdue = True
+                should_send = True
 
-        if send_overdue:
+        if should_send:
 
             await BOT.send_message(
                 chat_id,
                 f"🚨 ПРОСРОЧЕННАЯ ЗАДАЧА\n\n"
-                f"Задача #{task_id}\n\n"
+                f"#{task_id}\n\n"
                 f"📌 {task_text}\n"
                 f"👤 {executor}\n\n"
                 f"Сдайте задачу."
             )
 
             if not last_notice:
-                await add_penalty(
-                    chat_id,
-                    executor
-                )
+                await add_penalty(chat_id, executor)
 
             await update_last_overdue_notice(
                 task_id,
-                current_time.strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                )
+                current_time.strftime("%Y-%m-%d %H:%M:%S")
             )
 ```
+
+# =====================================
+
+# MORNING MESSAGE
+
+# =====================================
 
 async def morning_message():
 
 ```
-names = [
-    "Даша",
-    "Вася",
-    "Василиса",
-    "Лизочек"
-]
+names = ["Даша", "Вася", "Василиса", "Лизочек"]
 
 poop = random.choice(names)
+beauty = random.choice([n for n in names if n != poop])
 
-beauty = random.choice(
-    [x for x in names if x != poop]
-)
+groups = await get_groups()
 
-tasks = await get_all_active_tasks()
-
-if not tasks:
+if not groups:
     return
 
-chat_id = tasks[0][1]
+for g in groups:
 
-await BOT.send_message(
-    chat_id,
-    f"Всем привет! ☀️\n\n"
-    f"💩 Какашка дня — {poop}\n\n"
-    f"💅 Красотка дня — {beauty}"
-)
+    chat_id = g[0]
+
+    await BOT.send_message(
+        chat_id,
+        f"Всем привет! ☀️\n\n"
+        f"💩 Какашка дня — {poop}\n\n"
+        f"💅 Красотка дня — {beauty}"
+    )
 ```
+
+# =====================================
+
+# SETUP
+
+# =====================================
 
 def setup_scheduler(bot):
 
 ```
 global BOT
-
 BOT = bot
 
 scheduler.add_job(
@@ -198,4 +197,3 @@ scheduler.add_job(
 
 scheduler.start()
 ```
-
