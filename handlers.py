@@ -11,7 +11,9 @@ from database import (
     update_task_status,
     update_deadline,
     save_group,
-    get_closed_tasks
+    get_closed_tasks,
+    get_active_tasks_by_executor,
+    get_all_tasks_by_executor
 )
 
 router = Router()
@@ -25,6 +27,16 @@ UTC_OFFSET = 3
 
 def now_msk():
     return datetime.utcnow() + timedelta(hours=UTC_OFFSET)
+
+
+# Проверяет, прошёл ли дедлайн (для пометки просрочки).
+# deadline хранится в виде строки "12.06.2026 18:00".
+def is_overdue(deadline_str):
+    try:
+        dl = datetime.strptime(deadline_str, "%d.%m.%Y %H:%M")
+        return now_msk() > dl
+    except:
+        return False
 
 
 # =========================
@@ -87,7 +99,7 @@ async def create_task(message: Message):
 
 
 # =========================
-# TASK LIST
+# TASK LIST (с пометкой просрочки)
 # =========================
 
 @router.message(F.text == "/tasks")
@@ -102,7 +114,96 @@ async def tasks(message: Message):
     text = "📋 Активные задачи:\n\n"
 
     for t in tasks:
-        text += f"#{t[0]} | {t[2]} | {t[3]} | {t[4]}\n"
+        # t[0]=id, t[2]=task, t[3]=executor, t[4]=deadline
+        mark = " 🔴 ПРОСРОЧЕНО" if is_overdue(t[4]) else ""
+        text += f"#{t[0]} | {t[2]} | {t[3]} | {t[4]}{mark}\n"
+
+    await message.answer(text)
+
+
+# =========================
+# НОВОЕ: ЗАДАЧИ КОНКРЕТНОГО ЧЕЛОВЕКА
+# Использование: /my @username
+# =========================
+
+@router.message(F.text.startswith("/my"))
+async def my_tasks(message: Message):
+
+    executor_match = re.search(r"@(\w+)", message.text)
+    if not executor_match:
+        await message.answer("❌ Формат: /my @username")
+        return
+
+    executor = "@" + executor_match.group(1)
+
+    tasks = await get_active_tasks_by_executor(message.chat.id, executor)
+
+    if not tasks:
+        await message.answer(f"📋 У {executor} нет активных задач 🎉")
+        return
+
+    text = f"📋 Активные задачи {executor}:\n\n"
+
+    for t in tasks:
+        mark = " 🔴 ПРОСРОЧЕНО" if is_overdue(t[4]) else ""
+        text += f"#{t[0]} | {t[2]} | {t[4]}{mark}\n"
+
+    await message.answer(text)
+
+
+# =========================
+# НОВОЕ: СТАТИСТИКА УЧАСТНИКА
+# Использование: /stats @username
+# =========================
+
+@router.message(F.text.startswith("/stats"))
+async def stats(message: Message):
+
+    executor_match = re.search(r"@(\w+)", message.text)
+    if not executor_match:
+        await message.answer("❌ Формат: /stats @username")
+        return
+
+    executor = "@" + executor_match.group(1)
+
+    all_tasks = await get_all_tasks_by_executor(message.chat.id, executor)
+
+    if not all_tasks:
+        await message.answer(f"📊 По {executor} задач пока нет")
+        return
+
+    done = 0
+    cancelled = 0
+    active = 0
+    overdue_now = 0       # активные с прошедшим дедлайном
+    done_late = 0         # сделанные после дедлайна
+
+    for t in all_tasks:
+        status = t[5]
+        deadline = t[4]
+
+        if status == "done":
+            done += 1
+            if is_overdue(deadline):
+                done_late += 1
+        elif status == "cancelled":
+            cancelled += 1
+        elif status == "active":
+            active += 1
+            if is_overdue(deadline):
+                overdue_now += 1
+
+    total = len(all_tasks)
+
+    text = (
+        f"📊 Статистика {executor}\n\n"
+        f"📦 Всего задач: {total}\n"
+        f"🟢 Активных: {active}\n"
+        f"✅ Сделано: {done}\n"
+        f"❌ Отменено: {cancelled}\n\n"
+        f"🔴 Сейчас просрочено: {overdue_now}\n"
+        f"⏱ Закрыто с опозданием: {done_late}"
+    )
 
     await message.answer(text)
 
@@ -209,8 +310,6 @@ async def closed(message: Message):
 # =========================
 # ВАЖНО: этот хендлер ДОЛЖЕН быть В САМОМ КОНЦЕ файла,
 # потому что @router.message() ловит ВСЕ сообщения.
-# Если поставить его выше — он перехватит все команды,
-# и они перестанут работать.
 
 @router.message()
 async def register_group(message: Message):
