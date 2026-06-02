@@ -158,7 +158,7 @@ async def update_last_overdue_notice(task_id, timestamp):
 
 
 # =========================
-# CLOSED TASKS (FIX ТВОЕЙ ОШИБКИ)
+# CLOSED TASKS
 # =========================
 
 async def get_closed_tasks(chat_id):
@@ -171,5 +171,46 @@ async def get_closed_tasks(chat_id):
         AND status IN ('done', 'cancelled')
         ORDER BY id DESC
         """, (chat_id,))
+
+        return await cursor.fetchall()
+
+
+# =========================
+# НОВОЕ: ЗАДАЧИ КОНКРЕТНОГО ЧЕЛОВЕКА
+# =========================
+# Возвращает активные задачи одного исполнителя.
+# executor сравниваем без учёта регистра, чтобы @User и @user совпадали.
+
+async def get_active_tasks_by_executor(chat_id, executor):
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        cursor = await db.execute("""
+        SELECT * FROM tasks
+        WHERE chat_id=?
+        AND status='active'
+        AND LOWER(executor)=LOWER(?)
+        ORDER BY id DESC
+        """, (chat_id, executor))
+
+        return await cursor.fetchall()
+
+
+# =========================
+# НОВОЕ: ВСЕ ЗАДАЧИ ЧЕЛОВЕКА (для статистики)
+# =========================
+# Возвращает ВСЕ задачи исполнителя (любой статус),
+# чтобы посчитать сделано/отменено/просрочено.
+
+async def get_all_tasks_by_executor(chat_id, executor):
+
+    async with aiosqlite.connect(DB_NAME) as db:
+
+        cursor = await db.execute("""
+        SELECT * FROM tasks
+        WHERE chat_id=?
+        AND LOWER(executor)=LOWER(?)
+        ORDER BY id DESC
+        """, (chat_id, executor))
 
         return await cursor.fetchall()
