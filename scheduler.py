@@ -49,14 +49,20 @@ async def check_tasks():
 
         diff = (dl - now).total_seconds()
 
-        # 24h reminder
+        # 24h reminder — теперь с тегом исполнителя
         if 0 < diff <= 86400 and not n24:
-            await BOT.send_message(chat_id, f"⏰ 24ч до дедлайна:\n{text}")
+            await BOT.send_message(
+                chat_id,
+                f"⏰ 24ч до дедлайна:\n{text}\n👤 {executor}"
+            )
             await mark_notification(task_id, "notified_24h")
 
-        # 2h reminder
+        # 2h reminder — теперь с тегом исполнителя
         if 0 < diff <= 7200 and not n2:
-            await BOT.send_message(chat_id, f"⚠️ 2ч осталось:\n{text}")
+            await BOT.send_message(
+                chat_id,
+                f"⚠️ 2ч осталось:\n{text}\n👤 {executor}"
+            )
             await mark_notification(task_id, "notified_2h")
 
         # overdue spam (каждые 30 минут)
@@ -70,9 +76,7 @@ async def check_tasks():
                 except:
                     last_time = None
 
-            # ИСПРАВЛЕНО: total_seconds() вместо seconds
-            # .seconds считает только секунды внутри суток и сбрасывается
-            # каждые 24 часа — из-за этого напоминания о просрочке ломались.
+            # total_seconds() вместо seconds — чтобы не сбрасывалось каждые сутки
             if (not last_time) or (now - last_time).total_seconds() >= 1800:
 
                 await BOT.send_message(
@@ -92,7 +96,8 @@ async def check_tasks():
 
 async def morning_message():
 
-    names = ["Даша", "Вася", "Василиса", "Лизочек"]
+    # ИЗМЕНЕНО: убрали "Лизочек", добавили "Игорь"
+    names = ["Даша", "Вася", "Василиса", "Игорь"]
 
     poop = random.choice(names)
     beauty = random.choice([n for n in names if n != poop])
