@@ -29,6 +29,15 @@ def parse_dt(dt_str):
     return datetime.strptime(dt_str, "%d.%m.%Y %H:%M")
 
 
+# Проверяет, прошёл ли дедлайн (для пометки просрочки в списке задач)
+def is_overdue(deadline_str):
+    try:
+        dl = parse_dt(deadline_str)
+        return now_msk() > dl
+    except:
+        return False
+
+
 # =========================
 # TASK CHECKER
 # =========================
@@ -49,7 +58,7 @@ async def check_tasks():
 
         diff = (dl - now).total_seconds()
 
-        # 24h reminder — теперь с тегом исполнителя
+        # 24h reminder — с тегом исполнителя
         if 0 < diff <= 86400 and not n24:
             await BOT.send_message(
                 chat_id,
@@ -57,7 +66,7 @@ async def check_tasks():
             )
             await mark_notification(task_id, "notified_24h")
 
-        # 2h reminder — теперь с тегом исполнителя
+        # 2h reminder — с тегом исполнителя
         if 0 < diff <= 7200 and not n2:
             await BOT.send_message(
                 chat_id,
@@ -76,7 +85,6 @@ async def check_tasks():
                 except:
                     last_time = None
 
-            # total_seconds() вместо seconds — чтобы не сбрасывалось каждые сутки
             if (not last_time) or (now - last_time).total_seconds() >= 1800:
 
                 await BOT.send_message(
@@ -96,8 +104,8 @@ async def check_tasks():
 
 async def morning_message():
 
-    # ИЗМЕНЕНО: убрали "Лизочек", добавили "Игорь"
-    names = ["Даша", "Вася", "Василиса", "Игорь"]
+    # добавлена "ДашаШ"
+    names = ["Даша", "Вася", "Василиса", "Игорь", "ДашаШ"]
 
     poop = random.choice(names)
     beauty = random.choice([n for n in names if n != poop])
@@ -112,6 +120,36 @@ async def morning_message():
 
 
 # =========================
+# НОВОЕ: ЕЖЕДНЕВНЫЙ СПИСОК АКТИВНЫХ ЗАДАЧ (10:30)
+# =========================
+# Работает так же, как команда /tasks, но рассылается сама
+# каждое утро во все группы, где зарегистрирован бот.
+
+async def daily_task_list():
+
+    groups = await get_groups()
+
+    for g in groups:
+
+        chat_id = g[0]
+
+        # Задачи общие для всех групп в базе, поэтому фильтруем
+        # только те, что относятся к этому чату
+        all_tasks = await get_all_active_tasks()
+        tasks = [t for t in all_tasks if t[1] == chat_id]
+
+        if not tasks:
+            text = "📋 Активных задач нет 🎉"
+        else:
+            text = "📋 Активные задачи на сегодня:\n\n"
+            for t in tasks:
+                mark = " 🔴 ПРОСРОЧЕНО" if is_overdue(t[4]) else ""
+                text += f"#{t[0]} | {t[2]} | {t[3]} | {t[4]}{mark}\n"
+
+        await BOT.send_message(chat_id, text)
+
+
+# =========================
 # START SCHEDULER
 # =========================
 
@@ -122,6 +160,7 @@ def setup_scheduler(bot):
 
     scheduler.add_job(check_tasks, "interval", minutes=1)
     scheduler.add_job(morning_message, "cron", hour=10, minute=30, timezone="Europe/Moscow")
+    scheduler.add_job(daily_task_list, "cron", hour=10, minute=30, timezone="Europe/Moscow")
 
     scheduler.start()
 
