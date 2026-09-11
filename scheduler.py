@@ -16,6 +16,12 @@ UTC_OFFSET = 3
 scheduler = AsyncIOScheduler()
 BOT = None
 
+# Список для утренней рубрики (💩/💅)
+NAMES = ["Даша", "Вася", "Василиса", "Игорь", "ДашаШ"]
+
+# Отдельный список для ежечасного шуточного вопроса
+HOURLY_NAMES = ["@igor_easyagency Игорь", "@igor_easyagency Игорек"]
+
 
 # =========================
 # TIME
@@ -104,11 +110,8 @@ async def check_tasks():
 
 async def morning_message():
 
-    # добавлена "ДашаШ"
-    names = ["Даша", "Вася", "Василиса", "Игорь", "ДашаШ"]
-
-    poop = random.choice(names)
-    beauty = random.choice([n for n in names if n != poop])
+    poop = random.choice(NAMES)
+    beauty = random.choice([n for n in NAMES if n != poop])
 
     groups = await get_groups()
 
@@ -120,10 +123,8 @@ async def morning_message():
 
 
 # =========================
-# НОВОЕ: ЕЖЕДНЕВНЫЙ СПИСОК АКТИВНЫХ ЗАДАЧ (10:30)
+# ЕЖЕДНЕВНЫЙ СПИСОК АКТИВНЫХ ЗАДАЧ (10:30)
 # =========================
-# Работает так же, как команда /tasks, но рассылается сама
-# каждое утро во все группы, где зарегистрирован бот.
 
 async def daily_task_list():
 
@@ -133,8 +134,6 @@ async def daily_task_list():
 
         chat_id = g[0]
 
-        # Задачи общие для всех групп в базе, поэтому фильтруем
-        # только те, что относятся к этому чату
         all_tasks = await get_all_active_tasks()
         tasks = [t for t in all_tasks if t[1] == chat_id]
 
@@ -150,6 +149,29 @@ async def daily_task_list():
 
 
 # =========================
+# НОВОЕ: ЕЖЕЧАСНЫЙ ШУТОЧНЫЙ ВОПРОС
+# =========================
+# Раз в час случайно выбирается один человек из списка HOURLY_NAMES
+# и случайно один из двух вопросов. Никто не выбирается специально —
+# выбор полностью случайный по всем участникам.
+
+QUESTIONS = ["ты куришь?", "ты спишь?"]
+
+async def hourly_question():
+
+    person = random.choice(HOURLY_NAMES)
+    question = random.choice(QUESTIONS)
+
+    groups = await get_groups()
+
+    for g in groups:
+        await BOT.send_message(
+            g[0],
+            f"🤔 {person}, {question}"
+        )
+
+
+# =========================
 # START SCHEDULER
 # =========================
 
@@ -161,6 +183,7 @@ def setup_scheduler(bot):
     scheduler.add_job(check_tasks, "interval", minutes=1)
     scheduler.add_job(morning_message, "cron", hour=10, minute=30, timezone="Europe/Moscow")
     scheduler.add_job(daily_task_list, "cron", hour=10, minute=30, timezone="Europe/Moscow")
+    scheduler.add_job(hourly_question, "interval", hours=1)
 
     scheduler.start()
 
