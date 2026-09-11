@@ -20,7 +20,7 @@ BOT = None
 NAMES = ["Даша", "Вася", "Василиса", "Игорь", "ДашаШ"]
 
 # Отдельный список для ежечасного шуточного вопроса
-HOURLY_NAMES = ["@igor_easyagency Игорь", "@igor_easyagency Игорек"]
+HOURLY_NAMES = ["Игорь", "Игорек", "@igor_easyagency"]
 
 
 # =========================
@@ -130,6 +130,9 @@ async def daily_task_list():
 
     groups = await get_groups()
 
+    # ВРЕМЕННЫЙ ЛОГ ДЛЯ ДИАГНОСТИКИ
+    logging.info(f"[daily_task_list] сработал, групп в базе: {len(groups)}")
+
     for g in groups:
 
         chat_id = g[0]
@@ -163,6 +166,10 @@ async def hourly_question():
     question = random.choice(QUESTIONS)
 
     groups = await get_groups()
+
+    # ВРЕМЕННЫЙ ЛОГ ДЛЯ ДИАГНОСТИКИ — покажет в логах Railway,
+    # сколько групп бот видит в момент срабатывания
+    logging.info(f"[hourly_question] сработал, групп в базе: {len(groups)}")
 
     for g in groups:
         await BOT.send_message(
