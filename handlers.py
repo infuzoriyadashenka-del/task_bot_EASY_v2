@@ -1,4 +1,5 @@
 import re
+import logging
 from datetime import datetime, timedelta
 
 from aiogram import Router, F
@@ -315,3 +316,5 @@ async def closed(message: Message):
 async def register_group(message: Message):
     if message.chat.type in ("group", "supergroup"):
         await save_group(message.chat.id)
+        # ВРЕМЕННЫЙ ЛОГ ДЛЯ ДИАГНОСТИКИ
+        logging.info(f"[register_group] зарегистрирован chat_id={message.chat.id}")
